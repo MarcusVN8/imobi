@@ -1,0 +1,30 @@
+# Dependências (instalar com npm install)
+node_modules/
+
+# Arquivos enviados pelos usuários (vão pro disco, não pro repo)
+uploads/*
+!uploads/.gitkeep
+
+# Variáveis de ambiente com segredos
+.env
+.env.local
+
+# Pacotes de entrega e artefatos de teste
+*.tar.gz
+*.tgz
+_dbg*.js
+_smoke*.js
+hermes-verify*.sh
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editores
+.vscode/
+.idea/
+*.swp

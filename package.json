@@ -1,0 +1,17 @@
+{
+  "name": "imobi-server",
+  "version": "1.0.0",
+  "description": "Backend Node.js + PostgreSQL para o SaaS Imobi (dados fictícios).",
+  "type": "commonjs",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "db:init": "node server/db-init.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "multer": "^2.2.0",
+    "pg": "^8.11.3"
+  }
+}

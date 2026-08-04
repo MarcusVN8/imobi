@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Imobi — Gestão Imobiliária</title>
+  <meta name="description" content="SaaS de gestão imobiliária: imóveis, proprietários, contratos, financeiro e cobranças." />
+  <!-- Fonte Inter (fallback system-ui já cobre offline) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/design.css" />
+
+  <!-- Bootstrap de tema ANTES da pintura: evita flash claro/escuro (seção 6) -->
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem('theme');
+        if (!t) t = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        if (t === 'dark') document.documentElement.classList.add('dark');
+      } catch (e) {}
+    })();
+  </script>
+</head>
+<body>
+  <div id="root"></div>
+
+  <!-- Ordem importa: base → dados(helpers UI) → api(cliente) → forms → charts → app → páginas -->
+  <script src="js/icons.js"></script>
+  <script src="js/theme.js"></script>
+  <script src="js/dados.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/ui-forms.js"></script>
+  <script src="js/ui-notify.js"></script>
+  <script src="js/charts.js"></script>
+  <script src="js/app.js"></script>
+  <script src="js/pages.js"></script>
+</body>
+</html>
