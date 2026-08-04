@@ -37,10 +37,10 @@ imobi/
 
 ## Como rodar (no gandalf / Linux)
 1. Postgres rodando (`sudo pg_ctlcluster 16 main start`).
-2. `cd imobi && DB_RESET=1 PGSUPER_DSN="postgres://postgres:postgres@127.0.0.1:5432/postgres" node server/db-init.js`
-   (cria banco `imobi`, usuário `imobi`/`imobi123`, schema + seed).
+2. `cd imobi && DB_RESET=1 PGSUPER_DSN="postgres://postgres:[SUA_SENHA]@127.0.0.1:5432/postgres" node server/db-init.js`
+   (cria banco `imobi`, usuário `imobi`, schema + seed — use a senha do seu `.env`).
 3. `node server/index.js` → abre http://localhost:3000
-4. (Opcional) `PGHOST=127.0.0.1 PGUSER=imobi PGPASSWORD=imobi123 PGDATABASE=imobi node server/index.js`
+4. (Opcional) `PGHOST=127.0.0.1 PGUSER=imobi PGPASSWORD=[SUA_SENHA] PGDATABASE=imobi node server/index.js`
 
 ## CRUD — o que funciona
 Cada entidade tem botões **Novo / Editar / Excluir** que persistem no Postgres:
