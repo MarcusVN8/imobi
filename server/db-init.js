@@ -9,7 +9,7 @@ const path = require('path');
 
 const SUPER_DSN = process.env.PGSUPER_DSN;
 if (!SUPER_DSN) {
-  console.error('[db-init] defina PGSUPER_DSN no .env (postgres://user:senha@host:porta/postgres).');
+  console.error('[db-init] defina PGSUPER_DSN no .env (postgres://USUARIO:[SUA_SENHA]@HOST:PORTA/POSTGRES).');
   process.exit(1);
 }
 const DB = process.env.PGDATABASE || 'imobi';
