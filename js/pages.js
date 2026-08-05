@@ -661,7 +661,63 @@
           } catch (err) { F.toast('Erro: ' + err.message, 'erro'); }
         });
       };
-      const makeForm = (initial) => cfg.upload ? openDocForm(initial) : F.openForm('Novo ' + cfg.title, cfg.fields, initial || {}, async (pl) => { await cfg.api.create(pl); F.toast('Adicionado.', 'ok'); router(); });
+      const makeForm = (initial) => {
+        if (cfg.upload) return openDocForm(initial);
+        // Special case: inquilinos should pick an existing contrato (select) or create one
+        if (cfg.api === A.inquilinos) {
+          (async () => {
+            let contratos = [];
+            try { contratos = await A.contratos.list(); } catch (e) { contratos = []; }
+            const contratoOpts = [{ value: '', label: 'Criar novo contrato...' }].concat(contratos.map((c) => ({ value: c.id, label: (c.codigo || c.id) + ' • ' + (c.imovel_codigo || c.imovel_id) })));
+            const fields = cfg.fields.map((f) => {
+              if (f.key === 'contrato_id') return { key: 'contrato_id', label: 'Contrato', type: 'select', options: contratoOpts };
+              return f;
+            });
+
+            F.openForm('Novo ' + cfg.title, fields, initial || {}, async (pl) => {
+              // if user chose to create a new contract (blank value) open contract form first
+              if (pl.contrato_id === '' || pl.contrato_id == null) {
+                // contract form fields (same as contratos config)
+                const contractFields = [
+                  { key: 'codigo', label: 'Código', required: true },
+                  { key: 'imovel_id', label: 'ID do imóvel', type: 'number', required: true },
+                  { key: 'proprietario', label: 'Proprietário', required: true },
+                  { key: 'inquilino', label: 'Inquilino', required: true },
+                  { key: 'aluguel', label: 'Aluguel (R$)', type: 'number', required: true },
+                  { key: 'iptu', label: 'IPTU (R$)', type: 'number' },
+                  { key: 'condominio', label: 'Condomínio (R$)', type: 'number' },
+                  { key: 'inicio', label: 'Início', type: 'date', required: true },
+                  { key: 'fim', label: 'Fim', type: 'date', required: true },
+                  { key: 'status', label: 'Status', type: 'select', options: statusOpts(['Ativo','Vencendo','Encerrado']) },
+                ];
+                F.openForm('Novo contrato', contractFields, {}, async (cpl) => {
+                  // create contract then create tenant using the earlier payload
+                  const created = await A.contratos.create(cpl);
+                  F.toast('Contrato criado.', 'ok');
+                  // try to set the select in the tenant form (if still present)
+                  const sel = document.querySelector('select[data-key="contrato_id"]');
+                  if (sel) {
+                    const opt = document.createElement('option'); opt.value = created.id; opt.textContent = (created.codigo || created.id) + ' • ' + (created.imovel_codigo || created.imovel_id);
+                    sel.appendChild(opt); sel.value = created.id;
+                  }
+                  // set the payload contrato_id and proceed to create tenant
+                  pl.contrato_id = created.id;
+                  await cfg.api.create(pl);
+                  F.toast('Inquilino adicionado.', 'ok');
+                  router();
+                });
+              } else {
+                await cfg.api.create(pl);
+                F.toast('Adicionado.', 'ok');
+                router();
+              }
+            });
+          })();
+          return;
+        }
+        // default behavior
+        return F.openForm('Novo ' + cfg.title, cfg.fields, initial || {}, async (pl) => { await cfg.api.create(pl); F.toast('Adicionado.', 'ok'); router(); });
+      };
       view.querySelectorAll('[data-edit]').forEach((b) => b.addEventListener('click', async () => {
         const id = b.closest('tr').getAttribute('data-id');
         const item = await cfg.api.get(id);
