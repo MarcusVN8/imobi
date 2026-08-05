@@ -308,17 +308,34 @@
   /* ===================== FINANCEIRO ===================== */
   async function financeiro() {
     const head = UI.pageHeader(["Dashboard"], "Financeiro", "Indicadores financeiros e fluxo de caixa.");
+    // lançamentos genéricos
     const lanc = await safe(() => A.lancamentos.list(), []);
+    // lista de proprietários para filtro (apenas exibir clientes com >5 imóveis)
+    const proprietarios = await safe(() => A.proprietarios.list(), []);
+    const clientesGrandes = proprietarios.filter((p) => Number(p.imoveis_count) > 5);
+
+    // agregado inicial (todos os clientes)
+    const agg = await safe(() => A.financeiro.aggregate(), { receita: 0, despesas: 0, aReceber: 0, saldo: 0 });
     const kpis = [
-      { label: "Receita (mês)", value: fmt(0), hint: "+18% YoY", icon: "DollarSign", tone: "success" },
-      { label: "Despesas (mês)", value: fmt(0), hint: "iptu+manut.", icon: "Wallet", tone: "warning" },
-      { label: "Saldo", value: fmt(0), hint: "líquido", icon: "TrendingUp", tone: "primary" },
-      { label: "A receber", value: fmt(0), hint: "15 dias", icon: "Clock", tone: "warning" },
+      { label: "Receita (mês)", value: fmt(agg.receita), hint: "+18% YoY", icon: "DollarSign", tone: "success" },
+      { label: "Despesas (mês)", value: fmt(agg.despesas), hint: "iptu+manut.", icon: "Wallet", tone: "warning" },
+      { label: "Saldo", value: fmt(agg.saldo), hint: "líquido", icon: "TrendingUp", tone: "primary" },
+      { label: "A receber", value: fmt(agg.aReceber), hint: "15 dias", icon: "Clock", tone: "warning" },
     ];
     const kpiHtml = kpis.map((k, i) => UI.statCard(k, i)).join('');
     const fluxo = await safe(() => A.series.fluxo(), []);
     const rows = lanc.map((l) => '<tr><td class="muted">' + l.data + '</td><td style="font-weight:500;">' + l.descricao + '</td><td>' + UI.badge(l.categoria) + '</td><td style="font-weight:600;">' + fmt(l.valor) + '</td><td>' + UI.badge(l.status) + '</td></tr>').join('');
-    return head + '<div class="grid kpi-grid mb-16">' + kpiHtml + '</div>' +
+
+    // filtro de cliente (aparece só se houver clientes com >5 imóveis)
+    const filtroHtml = (clientesGrandes.length ? '<div class="card mb-16"><div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;"><span class="hint">Filtrar por cliente com muitos imóveis:</span>' +
+      '<input list="dl-clientes" id="f-cliente" class="field" placeholder="Digite para filtrar (tecle uma letra)..."><datalist id="dl-clientes">' + clientesGrandes.map((c) => '<option value="' + c.nome + '">' + c.nome + ' (' + c.imoveis_count + ')</option>').join('') + '</datalist>' +
+      '<button class="btn btn--ghost btn--sm" id="f-cliente-clear">Limpar</button></div></div>' : '');
+
+    // placeholder para métricas do cliente e detalhes
+    const clienteMetrics = '<div id="fin-cliente-metrics" class="grid kpi-grid mb-16">' + kpiHtml + '</div>';
+    const clienteDetalhe = '<div id="fin-cliente-det"></div>';
+
+    return head + filtroHtml + clienteMetrics + clienteDetalhe +
       '<div class="card card--pad-lg mb-16 anim-fade"><div class="card-title mb-8">Fluxo de caixa (receita × despesa)</div>' +
       (fluxo.length ? C.bars(fluxo.map((r) => ({ m: r.mes, r: Number(r.receita) / 1000, d: Number(r.despesa) / 1000 }))) : '') + '</div>' +
       (lanc.length ? table(["Data", "Descrição", "Categoria", "Valor", "Status"], rows) : UI.empty("Wallet", "Sem lançamentos", "Adicione lançamentos financeiros."));
@@ -514,6 +531,67 @@
           { key: 'email', label: 'E-mail', required: true }, { key: 'tel', label: 'Telefone', required: true },
           { key: 'imoveis_count', label: 'Qtd. imóveis', type: 'number' }, { key: 'banco', label: 'Banco / PIX' },
         ], {}, async (pl) => { await A.proprietarios.create(pl); F.toast('Proprietário adicionado.', 'ok'); router(); }));
+    }
+
+    // Financeiro: filtro por cliente (input + datalist gerados no financeiro())
+    if (path === '/financeiro') {
+      const inp = view.querySelector('#f-cliente');
+      const clearBtn = view.querySelector('#f-cliente-clear');
+      const det = view.querySelector('#fin-cliente-det');
+      const metricsDiv = view.querySelector('#fin-cliente-metrics');
+      const loadAggregate = async () => {
+        try {
+          const agg = await A.financeiro.aggregate();
+          const kpisLocal = [
+            { label: "Receita (mês)", value: fmt(agg.receita), icon: "DollarSign", tone: "success" },
+            { label: "Despesas (mês)", value: fmt(agg.despesas), icon: "Wallet", tone: "warning" },
+            { label: "Saldo", value: fmt(agg.saldo), icon: "TrendingUp", tone: "primary" },
+            { label: "A receber", value: fmt(agg.aReceber), icon: "Clock", tone: "warning" },
+          ];
+          if (metricsDiv) metricsDiv.innerHTML = kpisLocal.map((k,i) => UI.statCard(k,i)).join('');
+        } catch (e) { F.toast('Erro ao carregar métricas agregadas: ' + e.message, 'erro'); }
+      };
+      if (clearBtn) clearBtn.addEventListener('click', async () => { if (inp) inp.value = ''; if (det) det.innerHTML = ''; await loadAggregate(); });
+      if (inp) {
+        inp.addEventListener('input', async () => {
+          const q = (inp.value || '').trim();
+          if (!q) { if (det) det.innerHTML = ''; await loadAggregate(); return; }
+          // find matching proprietor by exact name (datalist provides names)
+          let found = null;
+          try {
+            const props = await A.proprietarios.list();
+            found = props.find((p) => p.nome === q);
+          } catch (e) { F.toast('Erro ao buscar proprietários: ' + e.message, 'erro'); }
+          if (!found) return;
+          if (metricsDiv) metricsDiv.innerHTML = '<div class="card"><div class="skeleton" style="height:60px;"></div></div>';
+          if (det) det.innerHTML = '<div class="card"><div class="skeleton" style="height:120px;"></div></div>';
+          try {
+            const data = await A.financeiro.proprietario(found.id);
+            const receita = data.metrics ? data.metrics.receita : (data.cobrancas || []).filter(c => c.status === 'Pago').reduce((s,c)=>s+Number(c.valor||0),0);
+            const aReceber = data.metrics ? data.metrics.aReceber : (data.cobrancas || []).filter(c => c.status === 'Pendente').reduce((s,c)=>s+Number(c.valor||0),0);
+            const despesas = data.metrics ? data.metrics.despesas : (data.manutencoes || []).reduce((s,m)=>s+Number(m.valor||0),0);
+            const saldo = receita - despesas;
+            const kpisClient = [
+              { label: "Receita (mês)", value: fmt(receita), icon: "DollarSign", tone: "success" },
+              { label: "Despesas (mês)", value: fmt(despesas), icon: "Wallet", tone: "warning" },
+              { label: "Saldo", value: fmt(saldo), icon: "TrendingUp", tone: "primary" },
+              { label: "A receber", value: fmt(aReceber), icon: "Clock", tone: "warning" },
+            ];
+            if (metricsDiv) metricsDiv.innerHTML = kpisClient.map((k,i) => UI.statCard(k,i)).join('');
+
+            const nome = (data.proprietario && data.proprietario.nome) || '';
+            const html = '<div class="card card--pad-lg"><div class="card-title mb-8">' + nome + ' — Resumo financeiro</div>' +
+              '<div style="padding:6px 0;">Imóveis: ' + (data.imoveis.length) + ' • Contratos: ' + (data.contratos.length) + '</div>' +
+              '<div style="padding:6px 0;font-weight:600;">Total cobranças: ' + fmt((data.cobrancas || []).reduce((s,c)=>s+Number(c.valor||0),0)) + '</div>' +
+              ((data.cobrancas && data.cobrancas.length) ? table(["Venc.","Cliente","Contrato","Valor","Status"],
+                data.cobrancas.map((cb) => '<tr><td class="muted">' + cb.vencimento + '</td><td>' + cb.cliente + '</td><td class="micro">' + (cb.contrato_codigo || cb.contrato_id) + '</td><td style="font-weight:600;">' + fmt(cb.valor) + '</td><td>' + UI.badge(cb.status) + '</td></tr>').join('')) : '<div class="hint" style="padding:8px 0;">Nenhuma cobrança para este cliente.</div>') +
+              '</div>';
+            if (det) det.innerHTML = html;
+          } catch (e) { F.toast('Erro ao carregar dados do cliente: ' + e.message, 'erro'); if (det) det.innerHTML = ''; }
+        });
+      }
+      // load initial aggregate metrics
+      await loadAggregate();
     }
 
     // Tabelas CRUD genéricas (inquilinos/contratos/cobrancas/manutencoes/documentos)

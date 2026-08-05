@@ -70,5 +70,9 @@ window.API = (function () {
         return res.blob();
       },
     },
+    financeiro: {
+      proprietario: (id) => req('GET', '/api/financeiro/proprietario/' + id),
+      aggregate: () => req('GET', '/api/financeiro/aggregate'),
+    },
   };
 })();

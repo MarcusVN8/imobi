@@ -19,7 +19,50 @@ router.use('/imoveis', makeCrud('imoveis', {
 router.use('/proprietarios', makeCrud('proprietarios', {
   nome: T.text, doc: T.text, email: T.text, tel: T.text,
   imoveis_count: T.int, banco: T.text,
-}, { orderBy: 'nome' }));
+}, { orderBy: 'nome', readSelect: `SELECT p.*, COALESCE(COUNT(i.id),0) AS imoveis_count FROM proprietarios p LEFT JOIN imoveis i ON i.proprietario = p.nome GROUP BY p.id` }));
+
+// Financeiro por proprietário (retorna imóveis, contratos, cobranças e manutenções relacionadas) + métricas
+router.get('/financeiro/proprietario/:id', async (req, r) => {
+  try {
+    const pid = Number(req.params.id);
+    const p = await query('SELECT nome FROM proprietarios WHERE id=$1', [pid]);
+    if (!p.rows.length) return r.status(404).json({ error: 'Proprietário não encontrado' });
+    const nome = p.rows[0].nome;
+    // imóveis do proprietário
+    const imoveis = await query('SELECT id, codigo, endereco, cidade, tipo, valor, status FROM imoveis WHERE proprietario=$1 ORDER BY codigo', [nome]);
+    const imIds = imoveis.rows.map((x) => x.id);
+    // contratos vinculados aos imóveis (se existirem)
+    const contratos = imIds.length ? (await query('SELECT c.*, i.codigo AS imovel_codigo FROM contratos c LEFT JOIN imoveis i ON i.id=c.imovel_id WHERE c.imovel_id = ANY($1::int[]) ORDER BY c.codigo', [imIds])).rows : [];
+    const contratoIds = contratos.map((c) => c.id);
+    // cobranças vinculadas aos contratos desses imóveis
+    const cobrancas = contratoIds.length ? (await query('SELECT cb.*, ct.codigo AS contrato_codigo FROM cobrancas cb LEFT JOIN contratos ct ON ct.id=cb.contrato_id WHERE cb.contrato_id = ANY($1::int[]) ORDER BY cb.vencimento', [contratoIds])).rows : [];
+    // manutenções vinculadas aos imóveis
+    const manutencoes = imIds.length ? (await query('SELECT m.* FROM manutencoes m WHERE m.imovel_id = ANY($1::int[])', [imIds])).rows : [];
+    // métricas: receita (cobranças pagas), aReceber (pendentes), despesas (manutencoes), saldo
+    const receitaRes = await query("SELECT COALESCE(SUM(valor),0) v FROM cobrancas cb WHERE cb.contrato_id = ANY($1::int[]) AND cb.status='Pago'", [contratoIds.length ? contratoIds : [0]]);
+    const aReceberRes = await query("SELECT COALESCE(SUM(valor),0) v FROM cobrancas cb WHERE cb.contrato_id = ANY($1::int[]) AND cb.status='Pendente'", [contratoIds.length ? contratoIds : [0]]);
+    const despesasRes = await query('SELECT COALESCE(SUM(valor),0) v FROM manutencoes m WHERE m.imovel_id = ANY($1::int[])', [imIds.length ? imIds : [0]]);
+    const receita = Number(receitaRes.rows[0].v || 0);
+    const aReceber = Number(aReceberRes.rows[0].v || 0);
+    const despesas = Number(despesasRes.rows[0].v || 0);
+    const saldo = receita - despesas;
+    return r.json({ proprietario: { id: pid, nome }, imoveis: imoveis.rows, contratos, cobrancas, manutencoes, metrics: { receita, despesas, aReceber, saldo } });
+  } catch (e) { r.status(500).json({ error: e.message }); }
+});
+
+// Agregado financeiro (todos os clientes)
+router.get('/financeiro/aggregate', async (_, r) => {
+  try {
+    const receitaRes = await query("SELECT COALESCE(SUM(valor),0) v FROM cobrancas WHERE status='Pago'");
+    const aReceberRes = await query("SELECT COALESCE(SUM(valor),0) v FROM cobrancas WHERE status='Pendente'");
+    const despesasRes = await query('SELECT COALESCE(SUM(valor),0) v FROM manutencoes');
+    const receita = Number(receitaRes.rows[0].v || 0);
+    const aReceber = Number(aReceberRes.rows[0].v || 0);
+    const despesas = Number(despesasRes.rows[0].v || 0);
+    const saldo = receita - despesas;
+    r.json({ receita, despesas, aReceber, saldo });
+  } catch (e) { r.status(500).json({ error: e.message }); }
+});
 
 router.use('/contratos', makeCrud('contratos', {
   codigo: T.text, imovel_id: T.int, proprietario: T.text, inquilino: T.text,
